@@ -1,0 +1,48 @@
+name: Release
+
+# 推一个 tag = 发一个版本。tag 必须严格是 vMAJOR.MINOR.PATCH（例如 v1.0.0）。
+# 其他写法（v1、v1.0、1.0.0、v1.0.0-beta）会在校验步直接失败，避免误发。
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate tag (strict vMAJOR.MINOR.PATCH)
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::tag '$TAG' 不符合命名规则：必须是 v主.次.修订（如 v1.0.0），不允许前后缀、预发布后缀或前导零以外的任何写法。"
+            echo "如误推了 tag，可删除：git push origin :refs/tags/$TAG"
+            exit 1
+          fi
+          echo "tag OK: $TAG"
+
+      - name: Package webui (static site, self-hostable)
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          mkdir -p dist
+          cd webui && zip -r "../dist/webui-${TAG}.zip" . && cd ..
+          ls -la dist/
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          MAJOR="${TAG#v}"; MAJOR="${MAJOR%%.*}"
+          # 0.x 视为测试版，自动标记 prerelease
+          PRE=""
+          if [ "$MAJOR" = "0" ]; then PRE="--prerelease"; fi
+          gh release create "$TAG" dist/*.zip \
+            --title "$TAG" \
+            --generate-notes \
+            $PRE
+          echo "released $TAG prerelease=$([ -n "$PRE" ] && echo yes || echo no)"

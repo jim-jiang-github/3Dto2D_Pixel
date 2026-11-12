@@ -88,7 +88,17 @@ Blender 从 `$BLENDER`、`PATH`、常见安装路径依次查找。目标尺寸�
 
 ## 部署到 GitHub Pages
 
-工具没有后端，纯静态托管就够：推 `main` 后仓库 Settings → Pages → Source 选 **"GitHub Actions"**，`.github/workflows/pages.yml` 会自动发布 `webui/` 目录。仓库需 public；私有仓库用 Cloudflare Pages / Netlify / Vercel，根目录设成 `webui` 即可。托管体积约 1.5 MB，无外链 CDN。
+工具没有后端，纯静态托管就够：推 `main`/`dev` 后仓库 Settings → Pages → Source 选 **"GitHub Actions"**，`.github/workflows/pages.yml` 会自动发布 `webui/` 目录。仓库需 public；私有仓库用 Cloudflare Pages / Netlify / Vercel，根目录设成 `webui` 即可。托管体积约 1.5 MB，无外链 CDN。
+
+## 发版（推 tag 即发布）
+
+```bash
+git tag v0.0.1 && git push origin v0.0.1
+```
+
+- tag 必须严格是 `v主.次.修订`（`v1.0.0`）。其他写法（`v1`、`v1.0`、`1.0.0`、`v1.0.0-beta`）会在校验步失败，不会发版；误推可用 `git push origin :refs/tags/<tag>` 删除
+- 触发 `.github/workflows/release.yml`：自动创建 GitHub Release，附带 `webui-v<版本>.zip`（可自托管的完整静态站点），并用提交记录自动生成 Release Notes
+- `0.x` 版本自动标记为预发布（测试版），升到 `1.0.0` 起转正式版
 
 ## 许可
 
