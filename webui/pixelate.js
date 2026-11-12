@@ -142,6 +142,36 @@ export function makeSheet(frames, size) {
   return c;
 }
 
+/**
+ * Animated atlas: one row per facing (ORDER top to bottom), one column per
+ * animation frame. Single-frame sets collapse to the classic 4 x 2 layout so
+ * old sheets stay byte-compatible.
+ */
+export function makeSheetAnim(frames, size) {
+  const N = Math.max(1, ...ORDER.map((d) => (frames[d] ? frames[d].length : 0)));
+  if (N <= 1) {
+    const flat = {};
+    ORDER.forEach((d) => { flat[d] = frames[d] && frames[d][0]; });
+    return makeSheet(flat, size);
+  }
+
+  const c = document.createElement("canvas");
+  c.width = size * N;
+  c.height = size * ORDER.length;
+  const ctx = c.getContext("2d");
+  ORDER.forEach((dir, row) => {
+    const list = frames[dir] || [];
+    list.forEach((f, col) => {
+      const tmp = document.createElement("canvas");
+      tmp.width = size;
+      tmp.height = size;
+      tmp.getContext("2d").putImageData(new ImageData(f, size, size), 0, 0);
+      ctx.drawImage(tmp, col * size, row * size);
+    });
+  });
+  return c;
+}
+
 export function downloadCanvas(canvas, name) {
   canvas.toBlob((blob) => {
     const a = document.createElement("a");

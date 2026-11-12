@@ -2,7 +2,7 @@
 
 **Turn 3D models (.glb) into true-color pixel-art sprites with 8 directions — in your browser or offline with Blender.**
 
-拖一个 `.glb` 进去，得到 8 方向像素精灵 + 游戏图集 + 旋转 GIF。真彩色、无减色、无抖动，纯前端零上传，模型不出本机。
+拖一个 `.glb` 进去，得到 8 方向像素精灵 + 游戏图集 + 旋转 GIF。可以一键载入自带 14 个开源动作的示例角色，直接出**骨骼动画**精灵表。真彩色、无减色、无抖动，纯前端零上传，模型不出本机。
 
 ![7 个角色 × 8 方向的像素精灵成品](docs/samples/cast90-all.png)
 
@@ -30,6 +30,24 @@ Web UI 界面（左侧模型与调参，右侧 8 方向输出与 GIF 预览，�
 
 > ⚠️ 不要走"调色板量化 / 色阶合并"的路：会把皮肤和衣料弄出脏斑，观感是"16 色图"。像素风格 ≠ 减色，**网格化（几何）与调色板（色彩）是两件事**。
 
+## 骨骼动画
+
+三个入口，面板里的「动作 · 来源」切换：
+
+| 来源 | 说明 |
+| --- | --- |
+| 静态姿势 | 只出单帧（原有行为） |
+| 内置动作 | 待机 / 行走 / 奔跑，本仓库用代码直接生成，无第三方素材 |
+| 模型自带 | 读取 GLB 里的动画片段，原样播放（点「载入示例角色」可试） |
+
+内置动作是**按角色自身的前 / 侧 / 上三个轴**写的程序化姿势：每个骨骼的旋转先在世界空间算好，再共轭到该骨骼的局部坐标，所以同一套动作能套在不同 roll 约定的骨架上，不会出现"腿往外劈叉"。参数在 `webui/anims.js` 的 `WALK` / `RUN` 里，改幅度直接生效。
+
+「帧/向」选 1 / 4 / 6 / 8：每个朝向均匀采样该片段 N 帧，输出 8×N 的精灵表。多帧时 GIF 预览按完整循环播放，ZIP 里帧文件命名为 `S_0.png`、`S_1.png`…
+
+**示例角色**：`webui/assets/demo/robot.glb`，来自 three.js 官方示例的 [RobotExpressive](https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf/RobotExpressive)，作者 Tomás Laulhé，Don McCurdy 修改，**CC0 公共领域**，可自由分发。它自带 14 个动作：Idle / Walking / Running / Jump / Dance / Wave / Punch / Sitting / Standing / Death / No / Yes / ThumbsUp / WalkJump。
+
+> 关于 Mixamo：Adobe 的条款不允许二次分发动作文件，所以仓库不会打包它。跨骨架重定向（Mixamo → 本项目骨架）也试过，因为两套骨骼的 roll 约定差异太大，任何变体都会留下永久性倾斜，宁可没有这个功能也不放个坏的上线，相关代码已移除。
+
 ## 参数
 
 | 参数 | 说明 |
@@ -37,6 +55,7 @@ Web UI 界面（左侧模型与调参，右侧 8 方向输出与 GIF 预览，�
 | 网格尺寸 | 72 / 80 / 90 / 96 / 112。**90 是调好的平衡点**：块一眼可见，五官还在；72 时眼睛开始塌，112 丢块感。 |
 | 超采样倍率 | 每块采多少子像素。16× 时每块 256 份采样，2 秒左右出 8 帧。 |
 | 头部放大 | 缩放 `Head` 骨骼，Q 版大头。默认 1.8。 |
+| 动作 / 帧每向 | 动作来源与每个朝向采样的帧数，见上方「骨骼动画」。 |
 | 阴影亮度 | 三档硬光里最暗档的亮度（默认 0.52）。 |
 | 外轮廓 | 剪影外侧 1px 墨线，颜色可换。 |
 
@@ -44,15 +63,19 @@ Web UI 界面（左侧模型与调参，右侧 8 方向输出与 GIF 预览，�
 
 ## 输出
 
-- 8 张 `S/SW/W/NW/N/NE/E/SE.png`（`cell_w = cell_h = 网格尺寸`）
-- `sheet.png`（1×8）、`atlas_4x2.png`（4×2 游戏图集）
-- `spin.gif`：8 方向循环旋转（4× 最近邻放大、150 ms/帧）
-- `sprite.json` 元数据 + 打包 ZIP 下载
+- 8 张 `S/SW/W/NW/N/NE/E/SE.png`（`cell_w = cell_h = 网格尺寸`）；多帧时是 `S_0.png … S_3.png`
+- `sheet.png`：静态时 4×2 图集；带动画时 8 行 × N 列（每行一个朝向）
+- `spin.gif`：8 方向循环旋转（4× 最近邻放大、150 ms/帧），多帧时按完整循环播放
+- `sprite.json`：尺寸、朝向顺序、`frames_per_dir`、`anim`（来源 / 片段名 / 时长）等元数据
+- 以上全部打包 ZIP 下载
 
 ## 仓库结构
 
 ```text
 webui/               浏览器工具：渲染、投票降采样、图集与 GIF 导出（纯前端，离线可用）
+  anims.js             程序化待机/行走/奔跑（角色空间 → 骨骼局部空间共轭）
+  pixelate.js          投票降采样、墨线、单帧/多帧图集
+  assets/demo/         示例角色（CC0，自带 14 个动作）
 tools/               Blender 离线管线与启动脚本编译器
   render_toon.py       三档硬光卡通着色 + 正交相机 8 朝向渲染
   px_ssaa.py           分块颜色投票降采样 + 外轮廓墨线
@@ -98,4 +121,6 @@ Blender 从 `$BLENDER`、`PATH`、常见安装路径依次查找。目标尺寸�
 
 ## 许可
 
-代码以 [MIT](LICENSE) 发布。模型与生成素材的版权归各自作者所有。
+代码以 [MIT](LICENSE) 发布。
+
+`webui/assets/demo/robot.glb` 为 CC0（Tomás Laulhé 制作、Don McCurdy 修改，来自 three.js 示例）；`webui/vendor/three/` 为 three.js r169（MIT）。你自己导入的模型与导出的精灵，版权归你或原作者所有。

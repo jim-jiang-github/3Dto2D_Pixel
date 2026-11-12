@@ -13,8 +13,11 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import {
-  voteDownscale, inkOutline, toCanvas, makeSheet, downloadCanvas, ORDER, ORDER_CN,
+  voteDownscale, inkOutline, toCanvas, makeSheet, makeSheetAnim, downloadCanvas, ORDER, ORDER_CN,
 } from "./pixelate.js";
+import {
+  PROC_CLIPS, captureRest, restoreRest, applyProcPose, findBones,
+} from "./anims.js";
 import { buildZip, canvasToBytes } from "./zip.js";
 import { encodeGif } from "./gif.js";
 
@@ -44,18 +47,39 @@ const state = {
   ink: [0, 0, 0],
   lightBg: false,
   modelName: "model",
+  facing: 0,       // model-facing correction, radians (rigs assume +X forward)
   gifZoom: 4,      // integer nearest-neighbour scale for the spin GIF
   gifDelay: 150,   // ms per facing
 };
 
+/* animation source: none | proc (built-in) | model (clips inside the GLB) */
+const anim = {
+  src: "none",
+  procId: "walk",
+  clipIndex: 0,
+  frames: 4,       // frames per facing used at generation time
+};
+
 let renderer, scene, camera, root, gradient, dirLight;
 let frameHeight = 1;
-let frames = {};          // dir -> Uint8ClampedArray
+let frames = {};          // dir -> [Uint8ClampedArray, ...]
 let sheetCanvas = null;
 let previewYaw = YAWS.S;
 let dragging = null;
 let gifBytes = null;      // cached so ZIP export never re-encodes
 let gifUrl = null;
+
+/* animation plumbing */
+let rest = null;            // base pose snapshot for procedural clips
+let animScale = 1;          // framed height, normalises the hip bob
+let modelClips = [];        // clips embedded in the current GLB
+let mixer = null;           // AnimationMixer for model/file sources
+let mixerAction = null;
+let mixerTarget = null;
+let playing = false;
+let playT = 0;              // seconds into the current clip
+let playLastTs = 0;
+let playRaf = 0;
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $("status");
@@ -224,7 +248,7 @@ function poseArms(object3d, degrees) {
  * sample real vertices, run them through the skin, then measure.
  */
 function worldBoxAtYaw(yaw, budget = 24000) {
-  root.rotation.y = yaw;
+  root.rotation.y = yaw + state.facing;
   root.updateMatrixWorld(true);
 
   const box = new THREE.Box3();
@@ -254,10 +278,14 @@ function worldBoxAtYaw(yaw, budget = 24000) {
 function frameCamera() {
   const union = new THREE.Box3();
   for (const dir of ORDER) union.union(worldBoxAtYaw(YAWS[dir]));
+  return applyFrame(union);
+}
 
+/** Aim the ortho camera at a bounds union (square, 10% margin by default). */
+function applyFrame(union, margin = 1.1) {
   const size = union.getSize(new THREE.Vector3());
   const center = union.getCenter(new THREE.Vector3());
-  const h = Math.max(size.x, size.y) * 1.1;
+  const h = Math.max(size.x, size.y) * margin;
 
   frameHeight = h;
   camera.left = -h / 2;
@@ -274,7 +302,7 @@ function frameCamera() {
 
 function drawPreview() {
   if (!root) return;
-  root.rotation.y = previewYaw;
+  root.rotation.y = previewYaw + state.facing;
   root.updateMatrixWorld(true);
   renderer.setRenderTarget(null);
   renderer.setSize(320, 320, false);
@@ -285,12 +313,35 @@ function drawPreview() {
 /* ---------- the actual conversion ---------- */
 
 async function convert() {
+  if (!root) return;
   const { size, ss } = state;
+  const N = anim.src === "none" ? 1 : Math.max(1, anim.frames | 0);
   const W = size * ss;
   const t0 = performance.now();
 
+  stopPlay();
   setBusy(true);
-  progress(0.02, "准备渲染目标 " + W + "×" + W);
+  progress(0.02, `准备渲染目标 ${W}×${W} · 每方向 ${N} 帧`);
+
+  const clip = currentClip();
+  const dur = clip ? (anim.src === "proc" ? clip.dur : clip.duration || 1) : 1;
+  const times = [];
+  for (let i = 0; i < N; i++) times.push((i / N) * dur);
+
+  // with animation the silhouette changes per pose, so re-frame over all
+  // sampled poses instead of trusting the static-pose framing
+  if (anim.src !== "none") {
+    progress(0.04, "按动作姿态取景…");
+    const union = new THREE.Box3();
+    for (const t of times) {
+      samplePose(t);
+      root.updateMatrixWorld(true);
+      for (const dir of ORDER) union.union(worldBoxAtYaw(YAWS[dir]));
+    }
+    applyFrame(union, 1.18);
+    animScale = frameHeight;
+    await nextTick();
+  }
 
   const rt = new THREE.WebGLRenderTarget(W, W, {
     format: THREE.RGBAFormat,
@@ -307,24 +358,36 @@ async function convert() {
   const out = {};
 
   try {
+    let done = 0;
+    const total = ORDER.length * N;
     for (let i = 0; i < ORDER.length; i++) {
       const dir = ORDER[i];
-      root.rotation.y = YAWS[dir];
-      root.updateMatrixWorld(true);
+      out[dir] = [];
 
-      renderer.setRenderTarget(rt);
-      renderer.clear(true, true, true);
-      renderer.render(scene, camera);
-      renderer.readRenderTargetPixels(rt, 0, 0, W, W, px);
+      for (let f = 0; f < N; f++) {
+        if (anim.src !== "none") {
+          samplePose(times[f]);
+          root.updateMatrixWorld(true);
+        }
+        root.rotation.y = YAWS[dir] + state.facing;
+        root.updateMatrixWorld(true);
 
-      progress(0.05 + 0.55 * (i / ORDER.length), `渲染 ${ORDER_CN[dir]}（${dir}）`);
-      await nextTick();
+        renderer.setRenderTarget(rt);
+        renderer.clear(true, true, true);
+        renderer.render(scene, camera);
+        renderer.readRenderTargetPixels(rt, 0, 0, W, W, px);
 
-      progress(0.05 + 0.55 * ((i + 1) / ORDER.length), `投票降采样 ${dir}`);
-      let grid = voteDownscale(px, W, size, 8, 0.3, true);
-      if (state.outline) grid = inkOutline(grid, size, state.ink);
-      out[dir] = grid;
-      await nextTick();
+        done++;
+        progress(0.05 + 0.6 * (done / total),
+          N > 1 ? `渲染 ${ORDER_CN[dir]}（${dir}）第 ${f + 1}/${N} 帧` : `渲染 ${ORDER_CN[dir]}（${dir}）`);
+        await nextTick();
+
+        progress(0.05 + 0.6 * ((done + 0.5) / total), `投票降采样 ${dir}${N > 1 ? " · 第 " + (f + 1) + " 帧" : ""}`);
+        let grid = voteDownscale(px, W, size, 8, 0.3, true);
+        if (state.outline) grid = inkOutline(grid, size, state.ink);
+        out[dir].push(grid);
+        await nextTick();
+      }
     }
   } finally {
     rt.dispose();
@@ -332,17 +395,21 @@ async function convert() {
 
   frames = out;
 
-  // second angle pass: the camera was framed from all yaws, restore a facing
-  root.rotation.y = previewYaw;
+  // back to the resting preview
+  root.rotation.y = previewYaw + state.facing;
+  if (anim.src === "proc") restoreRest(rest);
+  else if (mixer) mixer.setTime(0);
+  root.updateMatrixWorld(true);
+  drawPreview();
 
   progress(0.92, "拼接与预览");
-  sheetCanvas = makeSheet(frames, size);
+  sheetCanvas = makeSheetAnim(frames, size);
   renderCells();
   renderGif();
   $("dlAll").disabled = false;
 
   const ms = Math.round(performance.now() - t0);
-  progress(1, `完成 · ${size}×${size} · 每块 ${ss * ss} 份采样 · ${ms} ms`);
+  progress(1, `完成 · ${size}×${size} · ${N > 1 ? N + " 帧/方向 · " : ""}每块 ${ss * ss} 份采样 · ${ms} ms`);
   setBusy(false, "ok");
 }
 
@@ -356,12 +423,14 @@ function renderCells() {
   const grid = $("grid");
   grid.innerHTML = "";
   for (const dir of ORDER) {
-    const data = frames[dir];
+    const list = frames[dir] || [];
+    const data = list[0];
+    const N = list.length;
     const cell = document.createElement("div");
     cell.className = "cell" + (state.lightBg ? " light" : "");
     const head = document.createElement("div");
     head.className = "cell-head";
-    head.innerHTML = `<b>${dir}</b><span>${ORDER_CN[dir]}</span>`;
+    head.innerHTML = `<b>${dir}${N > 1 ? " ×" + N : ""}</b><span>${ORDER_CN[dir]}</span>`;
     cell.appendChild(head);
 
     if (!data) {
@@ -381,15 +450,17 @@ function renderCells() {
 /* ---------- spin gif ---------- */
 
 /**
- * The 8-facing loop. GIF caps a frame at 256 colours, so every frame gets its
- * own median-cut table (no dithering - it would scatter single pixels and undo
- * the grid). The PNG frames and the atlas stay true colour; this is only the
- * shareable preview.
+ * The 8-facing loop. With animation on, every facing contributes its whole
+ * walk cycle, so the GIF reads as "turn, walk, turn, walk". GIF caps a frame
+ * at 256 colours, so every frame gets its own median-cut table (no dithering
+ * - it would scatter single pixels and undo the grid). The PNG frames and the
+ * atlas stay true colour; this is only the shareable preview.
  */
 function renderGif() {
   const img = $("gifPreview");
   const empty = $("gifEmpty");
-  const list = ORDER.map((d) => frames[d]).filter(Boolean);
+  const list = [];
+  for (const d of ORDER) for (const f of frames[d] || []) list.push(f);
 
   if (list.length < 2) {
     gifBytes = null;
@@ -399,12 +470,20 @@ function renderGif() {
     return 0;
   }
 
+  const N = (frames[ORDER[0]] || []).length;
+  let delay = state.gifDelay;
+  if (N > 1) {
+    const clip = currentClip();
+    const dur = clip ? (anim.src === "proc" ? clip.dur : clip.duration || 1) : 1;
+    delay = Math.max(40, Math.round((dur * 1000) / N));
+  }
+
   const t0 = performance.now();
   gifBytes = encodeGif(list, {
     width: state.size,
     height: state.size,
     zoom: state.gifZoom,
-    delay: state.gifDelay,
+    delay,
     loop: 0,
   });
   const ms = Math.round(performance.now() - t0);
@@ -416,10 +495,13 @@ function renderGif() {
   empty.hidden = true;
   $("dlGif").disabled = false;
 
+  const em = document.getElementById("gifEm");
+  if (em) em.textContent = N > 1 ? `GIF · 8 向 × ${N} 帧` : "GIF · 8 向循环";
+
   const side = state.size * state.gifZoom;
   $("gifNote").textContent =
     `${side}×${side} · ${list.length} 帧 · ${(gifBytes.length / 1024).toFixed(0)} KB · ` +
-    `${state.gifDelay} ms/帧 · GIF 每帧上限 256 色（中位切分、不抖动），PNG 帧仍是真彩色`;
+    `${delay} ms/帧 · GIF 每帧上限 256 色（中位切分、不抖动），PNG 帧仍是真彩色`;
   return ms;
 }
 
@@ -437,30 +519,167 @@ function exportGif() {
   downloadBytes(gifBytes, `${state.modelName}_${state.size}_spin.gif`, "image/gif");
 }
 
-function exportCells() {  for (const dir of ORDER) {
-    if (!frames[dir]) continue;
-    const c = toCanvas(frames[dir], state.size, 1);
-    downloadCanvas(c, `${state.modelName}_${state.size}_${dir}.png`);
+function exportCells() {
+  for (const dir of ORDER) {
+    const list = frames[dir] || [];
+    list.forEach((f, i) => {
+      const c = toCanvas(f, state.size, 1);
+      const suffix = list.length > 1 ? `_${dir}_${i}` : `_${dir}`;
+      downloadCanvas(c, `${state.modelName}_${state.size}${suffix}.png`);
+    });
   }
+}
+
+/* ---------- animation ---------- */
+
+function currentClip() {
+  if (anim.src === "proc") return PROC_CLIPS.find((c) => c.id === anim.procId) || null;
+  const list = anim.src === "model" ? modelClips : [];
+  return list[anim.clipIndex] || null;
+}
+
+function clipDuration(clip) {
+  if (!clip) return 1;
+  return anim.src === "proc" ? clip.dur : clip.duration || 1;
+}
+
+/** Set the skeleton to clip time t (seconds). */
+function samplePose(t) {
+  if (anim.src === "proc") {
+    const c = currentClip();
+    applyProcPose(rest, anim.procId, c ? (t / c.dur) % 1 : 0, animScale);
+  } else if (mixer && mixerAction) {
+    mixer.setTime(t % clipDuration(mixerAction.getClip()));
+  }
+}
+
+function stopMixer() {
+  if (mixer) {
+    mixer.stopAllAction();
+    mixer.uncacheRoot(mixerTarget);
+    mixer = null;
+    mixerAction = null;
+  }
+}
+
+function startMixer() {
+  stopMixer();
+  const clip = currentClip();
+  if (!clip || anim.src !== "model") return;
+  mixerTarget = root;
+  if (!mixerTarget) return;
+  mixer = new THREE.AnimationMixer(mixerTarget);
+  mixerAction = mixer.clipAction(clip);
+  mixerAction.play();
+  mixer.setTime(0);
+}
+
+function stopPlay() {
+  playing = false;
+  if (playRaf) cancelAnimationFrame(playRaf);
+  playRaf = 0;
+  playLastTs = 0;
+  const b = $("animPlay");
+  if (b) b.textContent = "▶ 播放";
+}
+
+function startPlay() {
+  if (!root || anim.src === "none") return;
+  playing = true;
+  playLastTs = 0;
+  $("animPlay").textContent = "⏸ 暂停";
+  playRaf = requestAnimationFrame(playTick);
+}
+
+function playTick(ts) {
+  if (!playing) return;
+  if (playLastTs) playT += (ts - playLastTs) / 1000;
+  playLastTs = ts;
+  const c = currentClip();
+  if (c) samplePose(playT % clipDuration(c));
+  root.updateMatrixWorld(true);
+  drawPreview();
+  playRaf = requestAnimationFrame(playTick);
+}
+
+function setAnimSource(src) {
+  anim.src = src;
+  stopPlay();
+  if (src === "none") {
+    stopMixer();
+    restoreRest(rest);
+  } else if (src === "proc") {
+    stopMixer();
+    samplePose(0);
+  } else {
+    startMixer();
+    samplePose(0);
+  }
+  if (root) {
+    root.updateMatrixWorld(true);
+    drawPreview();
+  }
+  updateAnimUI();
+}
+
+function updateAnimUI() {
+  const srcSel = $("animSrc");
+  const clipSel = $("animClip");
+  const play = $("animPlay");
+
+  const bones = root ? findBones(root) : {};
+  srcSel.querySelector('[value="model"]').hidden = modelClips.length === 0;
+  srcSel.querySelector('[value="proc"]').hidden = !bones.hip || !bones.lThigh;
+  if (anim.src === "model" && modelClips.length === 0) anim.src = "none";
+  if (anim.src === "proc" && (!bones.hip || !bones.lThigh)) anim.src = "none";
+  srcSel.value = anim.src;
+
+  let clips = [];
+  if (anim.src === "proc") clips = PROC_CLIPS.map((c) => ({ v: c.id, t: c.label }));
+  else if (anim.src === "model") clips = modelClips.map((c, i) => ({ v: String(i), t: c.name || `片段 ${i + 1}` }));
+  clipSel.innerHTML = clips.map((o) => `<option value="${o.v}">${o.t}</option>`).join("");
+  clipSel.disabled = clips.length === 0;
+  if (anim.src === "proc") clipSel.value = anim.procId;
+  else if (clips.length) clipSel.value = String(Math.min(anim.clipIndex, clips.length - 1));
+
+  play.disabled = anim.src === "none" || !root;
+  play.textContent = playing ? "⏸ 暂停" : "▶ 播放";
 }
 
 async function exportZip() {
   setBusy(true, "打包 ZIP");
   try {
     const files = [];
+    let N = 1;
     for (const dir of ORDER) {
-      if (!frames[dir]) continue;
-      const c = toCanvas(frames[dir], state.size, 1);
-      files.push({ name: `${dir}.png`, data: await canvasToBytes(c) });
+      const list = frames[dir] || [];
+      N = Math.max(N, list.length);
+      list.forEach((f, i) => {
+        const c = toCanvas(f, state.size, 1);
+        const name = list.length > 1 ? `${dir}_${i}.png` : `${dir}.png`;
+        files.push({ name, canvas: c });
+      });
     }
-    files.push({ name: "sheet.png", data: await canvasToBytes(sheetCanvas) });
+    for (const f of files) f.data = await canvasToBytes(f.canvas);
+    if (sheetCanvas) files.push({ name: "sheet.png", data: await canvasToBytes(sheetCanvas) });
     if (gifBytes) files.push({ name: "spin.gif", data: gifBytes });
+
+    const clip = currentClip();
+    const animMeta = anim.src === "none" ? null : {
+      source: anim.src === "proc" ? "builtin" : anim.src,
+      clip: anim.src === "proc" ? clip.id : (clip && clip.name) || "",
+      frames_per_dir: N,
+      clip_duration: clip ? (anim.src === "proc" ? clip.dur : clip.duration || 1) : null,
+    };
     files.push({
       name: "sprite.json",
       data: new TextEncoder().encode(JSON.stringify({
         cell_w: state.size,
         cell_h: state.size,
         order: ORDER,
+        frames_per_dir: N,
+        sheet: N > 1 ? { rows: ORDER.length, cols: N } : { rows: 2, cols: 4 },
+        anim: animMeta,
         mode: "browser ssaa-vote+outline",
         subpixels_per_block: state.ss * state.ss,
         head_scale: state.headScale,
@@ -568,6 +787,31 @@ function bindUI() {
     state.ink = [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
   });
 
+  // animation controls
+  $("animSrc").addEventListener("change", (e) => setAnimSource(e.target.value));
+  $("animClip").addEventListener("change", (e) => {
+    if (anim.src === "proc") anim.procId = e.target.value;
+    else anim.clipIndex = +e.target.value;
+    playT = 0;
+    if (anim.src === "model" || anim.src === "file") startMixer();
+    if (anim.src !== "none" && root) {
+      samplePose(0);
+      root.updateMatrixWorld(true);
+      drawPreview();
+    }
+  });
+  bindSegment("frameSeg", (v) => { anim.frames = +v; });
+
+  $("demoBtn").addEventListener("click", () => {
+    loadDemo().catch((err) => {
+      console.error(err);
+      progress(0, "示例角色加载失败：" + err.message);
+      setBusy(false, "err");
+    });
+  });
+  $("animPlay").addEventListener("click", () => { if (playing) stopPlay(); else startPlay(); });
+  updateAnimUI();
+
   $("run").addEventListener("click", () => convert().catch((err) => {
     console.error(err);
     progress(0, err.message);
@@ -601,7 +845,31 @@ function applyHeadScale() {
   bone.scale.setScalar(state.headScale);
   bone.updateMatrixWorld(true);
   frameCamera();
+  // the base pose changed, so the procedural rest snapshot must follow
+  animScale = frameHeight;
+  rest = captureRest(root);
   drawPreview();
+}
+
+/** Load the bundled CC0 demo character (RobotExpressive, three.js examples). */
+async function loadDemo() {
+  setBusy(true);
+  progress(0.1, "载入示例角色…");
+  try {
+    const res = await fetch("assets/demo/robot.glb");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const file = new File([blob], "robot.glb", { type: "model/gltf-binary" });
+    await ingest(file);
+    // RobotExpressive is authored facing +Z; this pipeline assumes +X
+    state.facing = Math.PI / 2;
+    rest = captureRest(root);
+    frameCamera();
+    drawPreview();
+  } catch (err) {
+    setBusy(false, "err");
+    throw err;
+  }
 }
 
 async function ingest(file) {
@@ -624,6 +892,7 @@ async function ingest(file) {
     }
 
     root = gltf.scene;
+    state.facing = 0;
     state.modelName = file.name.replace(/\.(glb|gltf)$/i, "").replace(/[^\w\-]+/g, "_").slice(0, 40) || "model";
 
     const junk = dropIcosphere(root);
@@ -641,6 +910,17 @@ async function ingest(file) {
 
     const frame = frameCamera();
 
+    // animation state for the freshly loaded model
+    stopMixer();
+    stopPlay();
+    modelClips = gltf.animations || [];
+    animScale = frame.h;
+    anim.src = "none";
+    anim.clipIndex = Math.max(0, modelClips.findIndex((c) => /walk/i.test(c.name || "")));
+    if (modelClips.length) anim.src = "model";
+    rest = captureRest(root);
+    updateAnimUI();
+
     previewYaw = YAWS.S;
     root.rotation.y = previewYaw;
     root.updateMatrixWorld(true);
@@ -654,12 +934,13 @@ async function ingest(file) {
       }
     });
 
+    // one line only: the panel has to stay inside a single screen
     $("modelInfo").innerHTML =
-      `<b>${file.name}</b><br>` +
-      `${(file.size / 1048576).toFixed(1)} MB · ${meshes} 个网格 · ${Math.round(tris).toLocaleString()} 三角面` +
-      (junk ? ` · 已移除 ${junk} 个辅助球` : "") +
-      (arms ? ` · 手臂下垂 ${arms} 侧` : " · 未识别手臂骨骼") +
-      (bone ? "" : " · 无 Head 骨骼");
+      `<b>${file.name}</b> · ${(file.size / 1048576).toFixed(1)} MB · ` +
+      `${Math.round(tris / 1000).toLocaleString()}k 面` +
+      (modelClips.length ? ` · ${modelClips.length} 个动作` : "") +
+      (junk ? " · 已清理" : "") +
+      (bone ? "" : " · 无 Head 骨");
 
     frames = {};
     sheetCanvas = null;
@@ -702,14 +983,19 @@ bindUI();
 setBusy(false);
 window.__app = {
   state,
+  anim,
   get frames() { return frames; },
   get root() { return root; },
   get scene() { return scene; },
   get camera() { return camera; },
+  get rest() { return rest; },
   convert,
   ingest,
   exportZip,
   exportCells,
   renderGif,
+  setAnimSource,
+  loadDemo,
   get gifBytes() { return gifBytes; },
+  get mixer() { return mixer; },
 };

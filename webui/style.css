@@ -82,10 +82,10 @@ html, body {
 .panel::-webkit-scrollbar { width: 8px; }
 .panel::-webkit-scrollbar-thumb { background: #2c3444; border-radius: 8px; }
 
-.block { margin-bottom: 10px; }
+.block { margin-bottom: 5px; }
 .block:last-child { margin-bottom: 0; }
 .block h2 {
-  margin: 0 0 6px;
+  margin: 0 0 5px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: .09em;
@@ -97,7 +97,7 @@ html, body {
 .drop {
   border: 1.5px dashed var(--line2);
   border-radius: var(--radius);
-  padding: 10px 8px;
+  padding: 7px 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -112,18 +112,33 @@ html, body {
   background: #1b1a14;
   color: var(--text);
 }
-.drop svg { width: 20px; height: 20px; }
+.drop svg { width: 16px; height: 16px; }
 .drop strong { font-size: 12.5px; font-weight: 600; }
 .drop span { font-size: 11px; color: var(--dim2); }
 
+.demo-btn {
+  width: 100%;
+  margin-top: 4px;
+  padding: 3px 6px;
+  font-size: 11px;
+  color: var(--dim);
+}
+.demo-btn em {
+  font-style: normal;
+  color: var(--dim2);
+  font-size: 10.5px;
+  margin-left: 3px;
+}
+.demo-btn:hover { color: var(--fg); }
+
 .model-info {
-  margin-top: 6px;
+  margin-top: 4px;
   font-size: 11px;
   color: var(--dim2);
   line-height: 1.4;
   word-break: break-all;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -133,7 +148,7 @@ html, body {
 .preview-wrap {
   position: relative;
   margin-top: 8px;
-  height: 124px;
+  height: 52px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
@@ -157,7 +172,7 @@ html, body {
 /* fields */
 .field {
   display: block;
-  margin-bottom: 7px;
+  margin-bottom: 5px;
 }
 .field.row {
   display: flex;
@@ -182,9 +197,39 @@ html, body {
   grid-template-columns: 1fr auto;
   gap: 10px;
   align-items: center;
-  margin-bottom: 6px;
+  margin-bottom: 5px;
 }
 .row2 .field.row { gap: 8px; }
+.row-anim {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 5px;
+}
+.row-anim .lb {
+  font-size: 11.5px;
+  color: var(--dim);
+  white-space: nowrap;
+}
+.row-anim #frameSeg { width: 84px; flex: 0 0 auto; }
+.row-anim .ghost.tiny { padding: 3px 7px; font-size: 11px; flex: 0 0 auto; }
+.grow { min-width: 0; }
+.grow .sel { flex: 1; }
+
+/* compact select for animation sources */
+.sel {
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: #11151c;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px 6px;
+  max-width: 150px;
+  cursor: pointer;
+}
+.sel:disabled { opacity: .45; cursor: not-allowed; }
+.sel option { background: #171b23; color: var(--text); }
 
 .seg {
   display: grid;
@@ -194,7 +239,7 @@ html, body {
   background: #11151c;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 3px;
+  padding: 2px;
 }
 .seg button {
   border: 0;
@@ -202,15 +247,15 @@ html, body {
   color: var(--dim);
   font: inherit;
   font-size: 12px;
-  padding: 3px 0;
+  padding: 2px 0;
   border-radius: 6px;
   cursor: pointer;
   transition: .12s;
 }
 .seg button:hover { color: var(--text); background: #1b212b; }
 .seg button.on { background: #2a3242; color: var(--text); box-shadow: inset 0 0 0 1px #3b4658; }
-.seg.small { width: 118px; }
-.seg.small button { font-size: 11px; padding: 3px 0; }
+.seg.small { width: 112px; }
+.seg.small button { font-size: 11px; padding: 2px 0; }
 
 input[type="range"] {
   -webkit-appearance: none;
@@ -258,16 +303,16 @@ input[type="color"] {
 .switch input:checked + i::after { transform: translateX(16px); background: var(--accent2); }
 
 .hint {
-  margin: -2px 0 8px;
+  margin: -1px 0 4px;
   font-size: 11px;
   color: var(--dim2);
-  line-height: 1.45;
+  line-height: 1.35;
 }
 
 .run {
   width: 100%;
-  margin-top: 2px;
-  padding: 8px;
+  margin-top: 1px;
+  padding: 7px;
   border: 0;
   border-radius: 9px;
   background: linear-gradient(180deg, #ffd98a, #f2b84b);
@@ -285,7 +330,7 @@ input[type="color"] {
   height: 3px;
   background: #232a36;
   border-radius: 3px;
-  margin-top: 7px;
+  margin-top: 5px;
   overflow: hidden;
 }
 .progress i {
@@ -300,7 +345,7 @@ input[type="color"] {
   margin: 5px 0 0;
   font-size: 11px;
   color: var(--dim2);
-  min-height: 15px;
+  min-height: 13px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -447,7 +492,7 @@ input[type="color"] {
 }
 
 @media (max-height: 720px) {
-  .preview-wrap { height: 138px; }
+  .preview-wrap { height: 68px; }
   .gif-block { padding: 8px 12px; }
   .gif-wrap { width: 104px; height: 104px; }
 }

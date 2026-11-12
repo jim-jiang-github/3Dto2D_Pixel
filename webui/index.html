@@ -36,6 +36,9 @@
         <strong>拖入 .glb 文件</strong>
         <span>或点击选择</span>
       </div>
+      <button id="demoBtn" class="ghost tiny demo-btn">
+        载入示例角色 <em>CC0 · 自带 14 个动作</em>
+      </button>
       <div id="modelInfo" class="model-info"></div>
 
       <div class="preview-wrap">
@@ -45,7 +48,36 @@
     </section>
 
     <section class="block">
-      <h2>2 · 参数</h2>
+      <h2>2 · 动作</h2>
+      <div class="row2">
+        <label class="field row grow">
+          <span>来源</span>
+          <select id="animSrc" class="sel">
+            <option value="none">静态姿势</option>
+            <option value="proc">内置动作</option>
+            <option value="model" hidden>模型自带</option>
+          </select>
+        </label>
+        <label class="field row">
+          <span>片段</span>
+          <select id="animClip" class="sel" disabled></select>
+        </label>
+      </div>
+      <div class="row-anim">
+        <span class="lb">帧/向</span>
+        <div class="seg small" id="frameSeg">
+          <button data-v="1">1</button>
+          <button data-v="4" class="on">4</button>
+          <button data-v="6">6</button>
+          <button data-v="8">8</button>
+        </div>
+        <button id="animPlay" class="ghost tiny" disabled>▶ 播放</button>
+      </div>
+      <p class="hint">示例角色自带 14 个 CC0 开源动作。</p>
+    </section>
+
+    <section class="block">
+      <h2>3 · 参数</h2>
 
       <label class="field">
         <span>网格尺寸</span>
@@ -118,7 +150,7 @@
         <span id="gifEmpty" class="gif-empty">生成后自动出现</span>
       </div>
       <div class="gif-side">
-        <h3>旋转预览 <em>GIF · 8 向循环</em></h3>
+        <h3>动画预览 <em id="gifEm">GIF · 8 向循环</em></h3>
         <p class="gif-note" id="gifNote">GIF 每帧上限 256 色（格式限制），中位切分、不抖动；PNG 帧仍是真彩色。</p>
         <button id="dlGif" class="ghost" disabled>下载 GIF</button>
       </div>
