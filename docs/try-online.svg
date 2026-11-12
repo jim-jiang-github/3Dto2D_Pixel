@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="468" height="56" viewBox="0 0 468 56" role="img" aria-label="在线试玩：打开即用">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffdf9e"/>
+      <stop offset="1" stop-color="#f0b445"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".45"/>
+      <stop offset=".55" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="7" width="460" height="47" rx="12" fill="#000" opacity=".25"/>
+  <rect x="2" y="3" width="460" height="47" rx="12" fill="url(#g)" stroke="#946a1e" stroke-width="2"/>
+  <rect x="4" y="4" width="456" height="20" rx="10" fill="url(#shine)"/>
+  <path d="M26 15 L26 37 L43 26 Z" fill="#241a05"/>
+  <text x="56" y="34" font-family="PingFang SC,Microsoft YaHei,Segoe UI,sans-serif" font-size="20" font-weight="700" fill="#241a05">在线试玩</text>
+  <text x="152" y="33" font-family="PingFang SC,Microsoft YaHei,Segoe UI,sans-serif" font-size="14" fill="#5b4114">打开即用 · 无需安装</text>
+  <path d="M304 26.5 L406 26.5" fill="none" stroke="#241a05" stroke-width="4" stroke-linecap="round"/>
+  <path d="M394 16 L409 26.5 L394 37" fill="none" stroke="#241a05" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

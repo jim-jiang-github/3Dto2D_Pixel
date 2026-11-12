@@ -1,4 +1,4 @@
-# 3D to 2D Pixel
+# 3D to 2D Pixel <a href="https://jim-jiang-github.github.io/3Dto2D_Pixel/"><img src="docs/try-online.svg" alt="在线试玩" height="34" align="right"></a>
 
 **Turn 3D models (.glb) into true-color pixel-art sprites with 8 directions — in your browser or offline with Blender.**
 
@@ -60,8 +60,8 @@ tools/               Blender 离线管线与启动脚本编译器
   build_cast_px.py     一条命令：GLB 目录 → 全套精灵
   build_bat.py         把 start-webui.bat.utf8 编译成 GBK + CRLF 的 .bat
 start-webui.bat      Windows 一键启动 Web UI
-docs/samples/        示例输出图
-.github/workflows/   GitHub Pages 部署（只发布 webui/）
+docs/                README 用图：示例输出、试玩按钮、打赏码
+.github/workflows/   Pages 部署 + tag 发版
 ```
 
 ## 快速开始
@@ -86,19 +86,15 @@ python tools/build_cast_px.py --size 80 --only orc          # 单个模型、换
 
 Blender 从 `$BLENDER`、`PATH`、常见安装路径依次查找。目标尺寸必须整除超采样分辨率（1440 可出 72/80/90/96/120/144）。
 
-## 部署到 GitHub Pages
+## ☕ 请作者喝杯咖啡
 
-工具没有后端，纯静态托管就够：推 `main`/`dev` 后仓库 Settings → Pages → Source 选 **"GitHub Actions"**，`.github/workflows/pages.yml` 会自动发布 `webui/` 目录。仓库需 public；私有仓库用 Cloudflare Pages / Netlify / Vercel，根目录设成 `webui` 即可。托管体积约 1.5 MB，无外链 CDN。
+如果这个工具帮到了你，欢迎扫码请杯咖啡（金额随意，心意最重要）：
 
-## 发版（推 tag 即发布）
-
-```bash
-git tag v0.0.1 && git push origin v0.0.1
-```
-
-- tag 必须严格是 `v主.次.修订`（`v1.0.0`）。其他写法（`v1`、`v1.0`、`1.0.0`、`v1.0.0-beta`）会在校验步失败，不会发版；误推可用 `git push origin :refs/tags/<tag>` 删除
-- 触发 `.github/workflows/release.yml`：自动创建 GitHub Release，附带 `webui-v<版本>.zip`（可自托管的完整静态站点），并用提交记录自动生成 Release Notes
-- `0.x` 版本自动标记为预发布（测试版），升到 `1.0.0` 起转正式版
+<p align="center">
+  <img src="docs/donate_wechat.jpg" width="240" alt="微信支付收款码">
+  &nbsp;&nbsp;&nbsp;
+  <img src="docs/donate_alipay.jpg" width="240" alt="支付宝收款码">
+</p>
 
 ## 许可
 
