@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3D to 2D Pixel</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Crect width='8' height='8' fill='%2312151b'/%3E%3Crect x='1' y='1' width='3' height='3' fill='%23ffd166'/%3E%3Crect x='4' y='1' width='3' height='3' fill='%23ff9f5a'/%3E%3Crect x='1' y='4' width='3' height='3' fill='%236ee7b7'/%3E%3Crect x='4' y='4' width='3' height='3' fill='%237cc4ff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="top">
+    <div class="brand">
+      <span class="mark"></span>
+      <div>
+        <h1>3D to 2D Pixel</h1>
+        <p>3D 模型 → 像素精灵 · 真彩色 · 8 方向</p>
+      </div>
+    </div>
+    <div class="top-right">
+      <div id="status" class="status">等待导入模型</div>
+    </div>
+  </header>
+
+  <aside class="panel">
+
+    <section class="block">
+      <h2>1 · 模型</h2>
+      <div id="drop" class="drop">
+        <input id="file" type="file" accept=".glb,.gltf" hidden>
+        <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+          <path d="M12 16V4m0 0L7 9m5-5 5 5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"
+                fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+        <strong>拖入 .glb 文件</strong>
+        <span>或点击选择</span>
+      </div>
+      <div id="modelInfo" class="model-info"></div>
+
+      <div class="preview-wrap">
+        <canvas id="preview" width="320" height="320"></canvas>
+        <div class="preview-hint">拖动旋转</div>
+      </div>
+    </section>
+
+    <section class="block">
+      <h2>2 · 参数</h2>
+
+      <label class="field">
+        <span>网格尺寸</span>
+        <div class="seg" id="sizeSeg">
+          <button data-v="72">72</button>
+          <button data-v="80">80</button>
+          <button data-v="90" class="on">90</button>
+          <button data-v="96">96</button>
+          <button data-v="112">112</button>
+        </div>
+      </label>
+      <p class="hint">90 是调好的平衡点：块明显、五官还在。</p>
+
+      <label class="field">
+        <span>超采样倍率</span>
+        <div class="seg" id="ssSeg">
+          <button data-v="12">12×</button>
+          <button data-v="16" class="on">16×</button>
+          <button data-v="20">20×</button>
+        </div>
+      </label>
+      <p class="hint">倍率越高边缘越干净，耗时也越长。</p>
+
+      <label class="field">
+        <span>头部放大 <b id="headVal">1.80</b></span>
+        <input id="head" type="range" min="1" max="2.2" step="0.05" value="1.8">
+      </label>
+
+      <label class="field">
+        <span>阴影亮度 <b id="bandVal">0.52</b></span>
+        <input id="band" type="range" min="0.25" max="0.75" step="0.01" value="0.52">
+      </label>
+      <p class="hint">调高更平，调低对比更强。</p>
+
+      <div class="row2">
+        <label class="field row">
+          <span>外轮廓</span>
+          <span class="switch"><input id="outline" type="checkbox" checked><i></i></span>
+        </label>
+        <label class="field row">
+          <span>轮廓色</span>
+          <input id="inkColor" type="color" value="#000000">
+        </label>
+      </div>
+
+      <button id="run" class="run" disabled>生成 8 方向</button>
+      <div class="progress"><i id="bar"></i></div>
+      <p id="log" class="log"></p>
+    </section>
+
+  </aside>
+
+  <main class="stage">
+    <div class="stage-head">
+      <h2>输出</h2>
+      <div class="stage-actions">
+        <div class="seg small" id="bgSeg">
+          <button data-v="dark" class="on">深底</button>
+          <button data-v="light">浅底</button>
+        </div>
+        <button id="dlAll" class="ghost" disabled>下载 ZIP</button>
+      </div>
+    </div>
+
+    <div id="grid" class="grid"></div>
+
+    <div class="gif-block">
+      <div id="gifWrap" class="gif-wrap">
+        <img id="gifPreview" alt="8 方向旋转预览" hidden>
+        <span id="gifEmpty" class="gif-empty">生成后自动出现</span>
+      </div>
+      <div class="gif-side">
+        <h3>旋转预览 <em>GIF · 8 向循环</em></h3>
+        <p class="gif-note" id="gifNote">GIF 每帧上限 256 色（格式限制），中位切分、不抖动；PNG 帧仍是真彩色。</p>
+        <button id="dlGif" class="ghost" disabled>下载 GIF</button>
+      </div>
+    </div>
+  </main>
+
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/build/three.module.js",
+    "three/addons/": "./vendor/three/examples/jsm/"
+  }
+}
+</script>
+<script type="module" src="app.js"></script>
+</body>
+</html>

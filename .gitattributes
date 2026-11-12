@@ -1,0 +1,2 @@
+# start-webui.bat is GBK + CRLF; never let git rewrite it
+*.bat binary

@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+
+# 本地产出：渲染中间帧、精灵成品、打包件
+/out/
+/.local/
+*.zip
+
+# OS / 编辑器
+.DS_Store
+Thumbs.db
+
+# WorkBuddy 本地会话记忆（不入库）
+/.workbuddy/

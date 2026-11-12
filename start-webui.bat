@@ -1,0 +1,101 @@
+@echo off
+chcp 936 >nul
+setlocal enabledelayedexpansion
+title 3D to 2D Pixel - WebUI
+
+rem ============================================================
+rem  3D 模型转像素精灵 WebUI 一键启动
+rem  双击运行即可，按 Ctrl+C 或关闭窗口停止服务
+rem
+rem  用法:
+rem    start-webui.bat              默认端口 8765，自动打开浏览器
+rem    start-webui.bat 9000         指定端口
+rem    start-webui.bat nobrowser    不自动打开浏览器
+rem ============================================================
+
+cd /d "%~dp0"
+set "ROOT=%~dp0"
+set "WEBUI=%ROOT%webui"
+set "PORT=8765"
+set "OPEN_BROWSER=1"
+
+if not exist "%WEBUI%\index.html" (
+  echo.
+  echo  [错误] 找不到 webui\index.html
+  echo         请把 start-webui.bat 放在项目根目录，与 webui 文件夹同级。
+  echo.
+  pause
+  exit /b 1
+)
+
+rem --- 参数: nobrowser 跳过开浏览器，纯数字则指定端口 ---
+set "ARG1=%~1"
+if /i "%~1"=="nobrowser" (
+  set "OPEN_BROWSER=0"
+  set "ARG1=%~2"
+)
+if "%ARG1%"=="" goto :argdone
+echo %ARG1%| findstr /r "^[0-9][0-9]*$" >nul
+if not errorlevel 1 set "PORT=%ARG1%"
+:argdone
+
+rem --- 找一个可用的 Python ---
+set "PY="
+python -c "import sys" >nul 2>nul
+if not errorlevel 1 set "PY=python"
+if not defined PY (
+  py -3 -c "import sys" >nul 2>nul
+  if not errorlevel 1 set "PY=py -3"
+)
+if not defined PY (
+  echo.
+  echo  [错误] 未找到可用的 Python。
+  echo         请先安装 Python 3，安装时勾选 "Add python.exe to PATH"。
+  echo.
+  pause
+  exit /b 1
+)
+
+rem --- 端口被占用就往后找一个空的 ---
+set "PORT_BUMPED=0"
+:findport
+netstat -ano | findstr /c:":%PORT% " | findstr /i "LISTENING" >nul
+if not errorlevel 1 (
+  set /a PORT+=1
+  set "PORT_BUMPED=1"
+  if !PORT! gtr 65535 (
+    echo  [错误] 找不到可用端口。
+    pause
+    exit /b 1
+  )
+  goto :findport
+)
+
+set "URL=http://127.0.0.1:%PORT%/webui/"
+
+echo.
+echo  ============================================================
+echo    3D 模型  -^>  像素精灵 WebUI
+echo  ============================================================
+echo    地址   : %URL%
+echo    目录   : %WEBUI%
+if "%PORT_BUMPED%"=="1" echo    注意   : 8765 已被占用，已自动改用 %PORT%
+echo.
+echo    把 .glb 拖进左侧上传区，点 生成 8 方向 即可。
+echo    停止服务: 按 Ctrl+C，或直接关闭本窗口。
+echo  ============================================================
+echo.
+
+if "%OPEN_BROWSER%"=="1" (
+  rem ping instead of timeout: timeout needs stdin and errors out under some shells
+  start "" /b cmd /c "ping -n 3 127.0.0.1 >nul & explorer %URL%"
+) else (
+  echo  [nobrowser] 请手动打开上面的地址。
+  echo.
+)
+
+%PY% -m http.server %PORT% --bind 127.0.0.1
+
+echo.
+echo  服务已停止。
+pause
