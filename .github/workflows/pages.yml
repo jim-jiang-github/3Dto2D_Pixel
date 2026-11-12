@@ -6,7 +6,7 @@ name: Deploy WebUI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]   # dev 是本仓库的默认分支
     paths:
       - "webui/**"
       - ".github/workflows/pages.yml"
